@@ -1,0 +1,492 @@
+---
+title: "Hmk4-Fall18"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE)
+```
+
+## Analysis on Time
+```{r}
+library(tidyverse)
+library(plotly)
+library(lubridate) 
+library(RColorBrewer)
+data = read.csv("StormEvents_details-ftp_v1.0_d2017_c20181017.csv")
+```
+
+Load data and compute the duration. 
+
+```{r}
+format1 = "%d-%b-%y %H:%M:%S"
+starttime = strptime(data$BEGIN_DATE_TIME, format1)
+endtime = strptime(data$END_DATE_TIME, format1)
+data$DURATION = as.numeric(difftime(endtime, starttime, units='mins'))
+data <-data[complete.cases(data$DURATION),]
+data[data$DURATION == 0,"DURATION"] = NA
+data <-data[complete.cases(data$DURATION),]
+```
+
+```{r}
+head(data)
+```
+
+\par Draw the histogram of duration
+
+```{r}
+ggplot(data, aes(DURATION)) +
+  geom_histogram(bins = 60, fill = "lightblue", color = "blue") +
+  ggtitle("Histogram of Duration")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+short_duration = data[data$DURATION <= 5000, ]
+ggplot(short_duration, aes(DURATION)) +
+  geom_histogram(bins = 60, fill = "lightblue", color = "blue") +
+  ggtitle("Histogram of Duration")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+ggplot(data[data$DURATION < 5000,], aes(DURATION)) +
+  geom_histogram(bins = 60, fill = "lightblue", color = "blue") +
+  ggtitle("Histogram of Duration")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## The histogram shows that duration alone has no specific pattern. Analyze it with event-type and state.
+
+# Part 2: comparison analysis
+# With event-type
+```{r}
+summary(data$EVENT_TYPE)
+```
+
+
+```{r}
+data_withevent = data %>% group_by(EVENT_TYPE) %>% filter(n() >= 500)
+duration_withevent = data.frame(data_withevent)
+write.csv(duration_withevent, file = "./Data/duration_histogram_data.csv", row.names = FALSE)
+
+ggplot(data_withevent, aes(DURATION)) +
+  geom_histogram(bins = 60, fill = "lightblue", color = "blue") +
+  ggtitle("Histogram of Duration by Event type")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylab("Frequency")+
+  facet_wrap(~EVENT_TYPE, scales = "free")
+```
+
+```{r}
+ggplot(data_withevent[data_withevent$EVENT_TYPE == "Heavy Snow",], aes(DURATION)) +
+      geom_histogram(bins = 60, fill = "lightblue", color = "blue") +
+      ggtitle("Histogram of Duration by Event type")+
+      theme(plot.title = element_text(hjust = 0.5)) +
+      ylab("Frequency")
+
+```
+
+
+```{r}
+duration_mean_event = data_withevent %>% summarise(mean = mean(DURATION))
+#duration_mean_event = data.frame(duration_mean_event)[order(duration_mean_event$mean), ,drop = #FALSE]
+duration_mean_event = data.frame(duration_mean_event)
+duration_mean_event = duration_mean_event[order(duration_mean_event$mean), ]
+
+write.csv(duration_mean_event, file = "./Data/duration_mean_data.csv", row.names = FALSE)
+duration_mean_event
+```
+
+```{r}
+theme_dotplot <- theme_bw(15) +
+    theme(axis.text.y = element_text(size = rel(.75)),
+          axis.ticks.y = element_blank(),
+          axis.title.x = element_text(size = rel(.75)),
+          panel.grid.major.x = element_blank(),
+          panel.grid.major.y = element_line(size = 0.5),
+          panel.grid.minor.x = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5))
+
+c1 <- ggplot(duration_mean_event) +
+  geom_point(aes(mean, fct_reorder(EVENT_TYPE, mean)), size = 2, alpha = 0.8, color = "blue") +
+  theme_dotplot +
+  ylab("EVENT_TYPE")+
+  xlab("Mean of Duration") + 
+  ggtitle("Mean of Duration over Event_types")
+ggplotly(c1)
+```
+
+
+```{r}
+d1 = duration_mean_event$EVENT_TYPE[1:4]
+d2 = duration_mean_event$EVENT_TYPE[5:9]
+d3 = duration_mean_event$EVENT_TYPE[10:12]
+d4 = duration_mean_event$EVENT_TYPE[13]
+```
+
+
+```{r}
+data_withevent$dlevel = ifelse(data_withevent$EVENT_TYPE %in% d1, "d1", ifelse(data_withevent$EVENT_TYPE %in% d2, "d2", ifelse(data_withevent$EVENT_TYPE %in% d3, "d3", ifelse(data_withevent$EVENT_TYPE %in% d4, "d4", NA))))
+data_withevent = data_withevent[complete.cases(data_withevent$dlevel), ]
+data_withevent = data_withevent[! (data_withevent$dlevel == "d1" & data_withevent$DURATION > 25), ]
+data_withevent = data_withevent[! (data_withevent$dlevel == "d2" & data_withevent$DURATION > 1000), ]
+data_withevent = data_withevent[! (data_withevent$dlevel == "d3" & data_withevent$DURATION > 4000), ]
+data_withevent = data_withevent[! (data_withevent$dlevel == "d4" & data_withevent$DURATION > 70000), ]
+
+write.csv(data_withevent, file = "./Data/duration_boxplot_data.csv", row.names = FALSE)
+```
+
+
+```{r warning = FALSE, error = FALSE, message = FALSE, fig.height=8, fig.width=8}
+library(gridExtra)
+h1 <- ggplot(data_withevent[data_withevent$dlevel == "d1",], aes(reorder(EVENT_TYPE, -DURATION, FUN = median), DURATION)) +
+  geom_boxplot(aes(group = EVENT_TYPE), fill = "lightgray", color = "black") +
+  ggtitle("Histogram of Duration")+
+  xlab("EVENT_TYPE")+
+  ylab("DURATION")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,20)+
+  coord_flip()
+h2 <- ggplot(data_withevent[data_withevent$dlevel == "d2",], aes(reorder(EVENT_TYPE, -DURATION, FUN = median), DURATION)) +
+  geom_boxplot(aes(group = EVENT_TYPE), fill = "lightgray", color = "black") +
+  ggtitle("Histogram of Duration")+
+  xlab("EVENT_TYPE")+
+  ylab("DURATION")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,1000)+
+  coord_flip()
+h3 <- ggplot(data_withevent[data_withevent$dlevel == "d3",], aes(reorder(EVENT_TYPE, -DURATION, FUN = median), DURATION)) +
+  geom_boxplot(aes(group = EVENT_TYPE), fill = "lightgray", color = "black") +
+  ggtitle("Histogram of Duration")+
+  xlab("EVENT_TYPE")+
+  ylab("DURATION")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,4000)+
+  coord_flip()
+h4 <- ggplot(data_withevent[data_withevent$dlevel == "d4",], aes(reorder(EVENT_TYPE, -DURATION, FUN = median), DURATION)) +
+  geom_boxplot(aes(group = EVENT_TYPE), fill = "lightgray", color = "black") +
+  ggtitle("Histogram of Duration")+
+  xlab("EVENT_TYPE")+
+  ylab("DURATION")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,70000)+
+  coord_flip()
+grid.arrange(h1,h2,h3,h4,ncol = 1)
+```
+
+
+# With injures and deaths.
+
+```{r}
+data$INJURE_DEATH = data$INJURIES_DIRECT + data$INJURIES_INDIRECT + data$DEATHS_DIRECT + data$DEATHS_INDIRECT
+data_injdea = data[complete.cases(data$INJURE_DEATH),]
+data_injdea[data_injdea$INJURE_DEATH == 0,"INJURE_DEATH"] = NA
+data_injdea <-data_injdea[complete.cases(data_injdea$INJURE_DEATH),]
+head(data_injdea)
+```
+
+```{r}
+data_withinjure = data_injdea %>% group_by(EVENT_TYPE) %>% filter(n() >= 10)
+injure_mean_event = data_withinjure %>% summarise(mean = mean(INJURE_DEATH))
+injure_mean_event = data.frame(injure_mean_event)
+injure_mean_event = injure_mean_event[order(injure_mean_event$mean), ]
+injure_mean_event
+```
+
+```{r}
+theme_dotplot <- theme_bw(15) +
+    theme(axis.text.y = element_text(size = rel(.75)),
+          axis.ticks.y = element_blank(),
+          axis.title.x = element_text(size = rel(.75)),
+          panel.grid.major.x = element_blank(),
+          panel.grid.major.y = element_line(size = 0.5),
+          panel.grid.minor.x = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5))
+
+write.csv(injure_mean_event, file = "./Data/injure_mean_event.csv", row.names = FALSE)
+ggplot(injure_mean_event) +
+  geom_point(aes(mean, fct_reorder(EVENT_TYPE, mean)), size = 2, alpha = 0.8, color = "blue") +
+  theme_dotplot +
+  ylab("EVENT_TYPE")+
+  xlab("Mean of Injures and Deaths") + 
+  ggtitle("Mean of Injures and deaths over Event_types")
+```
+
+
+```{r}
+duration_withinjure = data.frame(data_withinjure)
+write.csv(duration_withinjure, file = "./Data/duration_injure_data.csv", row.names = FALSE)
+
+ggplot(data_withinjure, aes(DURATION, INJURE_DEATH)) +
+  geom_point(size = 1, alpha = 0.5) +
+  facet_wrap(~EVENT_TYPE, scales = "free") +
+  theme_classic(6.5) +
+  geom_smooth(method = "lm", se = FALSE,size = 0.5, color = "red") +
+  geom_density_2d(alpha = 0.6) +
+  ylab("Injures and Deaths") +
+  ggtitle("Relationship between duration and injures and deaths")+
+  theme(plot.title = element_text(hjust = 0.5))
+  
+```
+
+
+# with magnitude
+
+```{r}
+data_magnitude = data[complete.cases(data$MAGNITUDE),]
+#data[data$DURATION == 0,"DURATION"] = NA
+#data <-data[complete.cases(data$DURATION),]
+data_withmagnitude = data_magnitude %>% group_by(EVENT_TYPE) %>% filter(n() >= 50)
+magnitude_mean_event = data_withmagnitude %>% summarise(mean = mean(MAGNITUDE))
+```
+
+```{r}
+magnitude = data.frame(data_withmagnitude)
+write.csv(magnitude, file = "./Data/magnitude_histogram_data.csv", row.names = FALSE)
+
+ggplot(data_withmagnitude, aes(MAGNITUDE)) +
+  geom_histogram(bins = 60, fill = "lightblue", color = "blue") +
+  ggtitle("Histogram of Magnitude")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylab("Frequency")+
+  facet_wrap(~EVENT_TYPE, scales = "free")
+
+```
+
+```{r}
+
+write.csv(magnitude_mean_event, file = "./Data/magnitude_mean_data.csv", row.names = FALSE)
+
+ggplot(magnitude_mean_event) +
+  geom_point(aes(mean, fct_reorder(EVENT_TYPE, mean)), size = 2, alpha = 0.8, color = "blue") +
+  theme_dotplot +
+  ylab("EVENT_TYPE")+
+  xlab("Mean of Magnitude") + 
+  ggtitle("Mean of Magnitude over Event_types")
+```
+
+
+```{r}
+data_withmagnitude = data_withmagnitude[! (data_withmagnitude$EVENT_TYPE == "Hail" & data_withmagnitude$DURATION > 500), ]
+data_withmagnitude = data_withmagnitude[! (data_withmagnitude$EVENT_TYPE == "High Wind" & data_withmagnitude$DURATION > 4000), ]
+data_withmagnitude = data_withmagnitude[! (data_withmagnitude$EVENT_TYPE == "Strong Wind" & data_withmagnitude$DURATION > 1600), ]
+data_withmagnitude = data_withmagnitude[! (data_withmagnitude$EVENT_TYPE == "Thunderstorm Wind" & data_withmagnitude$DURATION > 150), ]
+```
+
+
+```{r}
+magnitude = data.frame(data_withmagnitude)
+write.csv(magnitude, file = "./Data/duration_magnitude_data.csv", row.names = FALSE)
+
+ggplot(data_withmagnitude, aes(DURATION, MAGNITUDE)) +
+  geom_point(size = 1, alpha = 0.25) +
+  facet_wrap(~EVENT_TYPE, scales = "free") +
+  theme_classic(8) +
+  geom_smooth(method = "lm",size = 0.5, color = "red") +
+  geom_density_2d(alpha = 0.6) +
+  ylab("MAGNITUDE") +
+  ggtitle("Relationship between Duration and Magnitude")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+summary(data$EVENT_TYPE)
+```
+
+# Special topic Tornado
+```{r}
+Tornado = data[data$EVENT_TYPE == "Tornado",]
+```
+
+
+```{r}
+Tornado_state_data = Tornado %>% group_by(STATE) %>% summarise(value = n())
+Tornado_state=data.frame(region =Tornado_state_data$STATE,value=Tornado_state_data$value)
+#Tornado_state$region=tolower(Tornado_state$region)
+
+
+ggplot(Tornado_state,aes(x=reorder(region,value),y=value)) +
+  geom_bar(stat = 'identity',fill='darkslateblue') +
+  geom_text(aes(label = round(value,3),hjust=-0.2), size = 3) +
+  xlab("State") + 
+  ylab("Frequency of Tornado") +
+  coord_flip() +
+  ggtitle('Tornado distribution over US')+
+  theme(axis.title.x = element_text(size = 12, face = "bold"),axis.title.y = element_text(size = 15, face = "bold"),axis.text=element_text(size=6,vjust = 0.5, hjust = 0.5, angle = 0))
+```
+
+```{r warning = FALSE, error = FALSE, message = FALSE, fig.height=10, fig.width=10}
+#library(choroplethr)
+#library(choroplethrMaps)
+#state_choropleth(Tornado_state, title="2017 Tornado Frequency by State", legend="Tornado")
+```
+```{r}
+Tornado_state$hover <- with(Tornado_state, paste(region, '<br>', "Frequency of Tornado:",'<br>'))
+Tornado_state$code = state.abb[match(Tornado_state$region,toupper(state.name))]
+```
+
+```{r}
+Tornado_state = Tornado_state[complete.cases(Tornado_state$code),]
+
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa')
+  
+)
+
+write.csv(Tornado_state, file = "./Data/Tornado_state.csv", row.names = FALSE)
+
+plot_geo(Tornado_state, locationmode = 'USA-states') %>%
+  add_trace(
+    z = ~value, locations = ~code,
+    color = ~value, colors = colorRampPalette(brewer.pal(11,"RdPu"))(100)
+  ) %>%
+  colorbar(title = "Frequency") %>%
+  layout(
+    title = '2017 USA Tornado Frequency by State',
+    geo = g
+  )
+```
+
+
+```{r}
+Tornado_month_data = Tornado %>% group_by(MONTH_NAME) %>% summarise(value = n())
+
+write.csv(Tornado_month_data, file = "./Data/Tornado_month_data.csv", row.names = FALSE)
+
+ggplot(Tornado_month_data) +
+  geom_point(aes(value, fct_reorder(MONTH_NAME, value)), size = 2, alpha = 0.8, color = "blue") +
+  theme_dotplot +
+  ylab("Occuring Month")+
+  xlab("Frequency of Month") + 
+  ggtitle("2017 Monthly Frequency of Tornado")
+```
+
+```{r}
+a=as.numeric(sub("K", "e3", Tornado$DAMAGE_PROPERTY, fixed = TRUE))
+b=as.numeric(sub("M", "e6", Tornado$DAMAGE_PROPERTY, fixed = TRUE))
+a[is.na(a)]=b[is.na(a)]
+Tornado$DAMAGE_PROPERTY=a
+Tornado$DAMAGE_PROPERTY[is.na(Tornado$DAMAGE_PROPERTY)]=0
+
+a=as.numeric(sub("K", "e3", Tornado$DAMAGE_CROPS, fixed = TRUE))
+b=as.numeric(sub("M", "e6", Tornado$DAMAGE_CROPS, fixed = TRUE))
+a[is.na(a)]=b[is.na(a)]
+Tornado$DAMAGE_CROPS=a
+Tornado$DAMAGE_CROPS[is.na(Tornado$DAMAGE_CROPS)]=0
+Tornado_damage = Tornado[Tornado$DAMAGE_PROPERTY!=0,]
+Tornado_damage$Total_damage = (Tornado_damage$DAMAGE_CROPS + Tornado_damage$DAMAGE_PROPERTY)/1000
+```
+
+```{r}
+write.csv(Tornado_damage, file = "./Data/Tornado_damage_data.csv", row.names = FALSE)
+
+ggplot(Tornado_damage, aes(Total_damage)) +
+  geom_histogram(bins = 60, fill = "lightblue", color = "blue") +
+  ggtitle("Histogram of Total Damage")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylab("Frequency")+
+  xlab("Total damage(K)")+
+  xlim(-1,500)
+```
+
+
+## Analysis of time series
+
+```{r}
+data_time = read.csv("1955_2017.csv")
+```
+
+```{r}
+data_time = data_time[data_time$YEAR >= 2000, ]
+data_time_data = data_time[c("YEAR","STATE","BEGIN_DATE_TIME", "END_DATE_TIME","EVENT_TYPE", "INJURIES_DIRECT","INJURIES_INDIRECT","DEATHS_DIRECT","DEATHS_INDIRECT", "MAGNITUDE", "DAMAGE_PROPERTY","DAMAGE_CROPS" )]
+```
+```{r}
+a=as.numeric(sub("K", "e3", data_time_data$DAMAGE_PROPERTY, fixed = TRUE))
+b=as.numeric(sub("M", "e6", data_time_data$DAMAGE_PROPERTY, fixed = TRUE))
+a[is.na(a)]=b[is.na(a)]
+data_time_data$DAMAGE_PROPERTY=a
+data_time_data$DAMAGE_PROPERTY[is.na(data_time_data$DAMAGE_PROPERTY)]=0
+
+a=as.numeric(sub("K", "e3", data_time_data$DAMAGE_CROPS, fixed = TRUE))
+b=as.numeric(sub("M", "e6", data_time_data$DAMAGE_CROPS, fixed = TRUE))
+a[is.na(a)]=b[is.na(a)]
+data_time_data$DAMAGE_CROPS=a
+data_time_data$DAMAGE_CROPS[is.na(data_time_data$DAMAGE_CROPS)]=0
+data_time_data = data_time_data[data_time_data$DAMAGE_PROPERTY!=0,]
+data_time_data$Total_damage = (data_time_data$DAMAGE_CROPS + data_time_data$DAMAGE_PROPERTY)/1000
+
+format1 = "%d-%b-%y %H:%M:%S"
+starttime = strptime(data_time_data$BEGIN_DATE_TIME, format1)
+endtime = strptime(data_time_data$END_DATE_TIME, format1)
+data_time_data$DURATION = as.numeric(difftime(endtime, starttime, units='mins'))
+data_time_data <-data_time_data[complete.cases(data_time_data$DURATION),]
+data_time_data[data_time_data$DURATION == 0,"DURATION"] = NA
+data_time_data <-data_time_data[complete.cases(data_time_data$DURATION),]
+
+```
+
+```{r}
+damage_time = data_time_data %>% group_by(YEAR, EVENT_TYPE) %>% filter(n() > 20) %>% summarise(mean = mean(Total_damage))
+damage_time = damage_time[order(damage_time$YEAR, damage_time$mean), ]
+damage_time
+```
+```{r}
+damage_event = damage_time %>% group_by(EVENT_TYPE) %>% summarise(mean = mean(mean))
+damage_event = damage_event[order(damage_event$mean), ]
+```
+
+```{r}
+dl1 = damage_event[damage_event$mean<100,]$EVENT_TYPE
+dl2 = damage_event[damage_event$mean>=100 & damage_event$mean<1000,]$EVENT_TYPE
+dl3 = damage_event[damage_event$mean>=1000 & damage_event$mean<2000,]$EVENT_TYPE
+dl4 = damage_event[damage_event$mean>=2000 & damage_event$mean<8000,]$EVENT_TYPE
+dl5 = damage_event[damage_event$mean>=8000 & damage_event$mean<30000,]$EVENT_TYPE
+```
+
+```{r}
+damage_time$dlevel = ifelse(damage_time$EVENT_TYPE %in% dl1, "d1", ifelse(damage_time$EVENT_TYPE %in% dl2, "d2", ifelse(damage_time$EVENT_TYPE %in% dl3, "d3", ifelse(damage_time$EVENT_TYPE %in% dl4, "d4", ifelse(damage_time$EVENT_TYPE %in% dl5, "d5", NA)))))
+```
+
+
+```{r warning = FALSE, error = FALSE, message = FALSE, fig.height=10, fig.width=10}
+#write.csv(damage_time, file = "./Data/damage_time.csv", row.names = FALSE)
+damage_time = read.csv("./Data/damage_time.csv")
+ggplot(damage_time, aes(YEAR, mean))+
+  geom_line(aes(group = EVENT_TYPE, color = EVENT_TYPE))+
+  ylab("Mean of damge")+
+  xlab("Year")+
+  facet_wrap(~dlevel, scales = "free", ncol = 1)
+```
+
+
+```{r}
+data_time_tornado = data_time_data[data_time_data$EVENT_TYPE == "Tornado", ]
+data_time_tornado = data_time_tornado %>% group_by(YEAR) %>% summarise(Frequency = n(), Mean_damage = mean(Total_damage), Total_damage = sum(Total_damage))
+
+```
+
+```{r}
+data_time_tornado$Total_damage = data_time_tornado$Total_damage/1000
+data_time_tornado$Mean_damage = data_time_tornado$Mean_damage/1000
+```
+
+```{r}
+write.csv(data_time_tornado, file = "./Data/Tornado_timeseries.csv", row.names = FALSE)
+```
+
+```{r}
+
+data_time_tornado = read.csv("./Data/Tornado_timeseries.csv")
+plot_ly(data_time_tornado, x = ~YEAR, y = ~Frequency, type = 'scatter', mode = 'lines') %>%
+  add_trace(y= ~Mean_damage, type = 'scatter', mode = 'lines')
+```
+
+```{r}
+
+```
+
